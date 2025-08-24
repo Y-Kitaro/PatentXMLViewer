@@ -1,66 +1,56 @@
 import React, { useState } from 'react';
-import { parsePatentXml } from './xmlParser';
+import { extractPatentData } from './patentDataExtractor';
+import { parseXmlString, createImageFileMap } from './xmlUtils';
 import PatentViewer from './PatentViewer';
 import './App.css';
 
+/**
+ * 特許公報XMLビューワーのメインアプリケーションコンポーネント
+ * @returns {JSX.Element}
+ */
 function App() {
   const [patentData, setPatentData] = useState(null);
   const [imageFiles, setImageFiles] = useState({});
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('XMLファイルと関連する画像ファイルを選択してください。');
 
-  // ファイルが選択されたときのメイン処理
+  /**
+   * ファイルインプットでファイルが選択されたときに実行されるハンドラ
+   * @param {React.ChangeEvent<HTMLInputElement>} event - ファイル選択イベント
+   */
   const handleFileSelect = (event) => {
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
-    // リセット処理
+    // 状態をリセット
     setError('');
     setPatentData(null);
     setImageFiles({});
 
-    // 1. XMLファイルを探す (一つだけあることを期待)
-    const xmlFiles = files.filter(file => file.name.toLowerCase().endsWith('.xml'));
-
-    if (xmlFiles.length === 0) {
+    const xmlFile = files.find(file => file.name.toLowerCase().endsWith('.xml'));
+    if (!xmlFile) {
       setError('XMLファイルが見つかりません。XMLファイルを必ず含めてください。');
       setStatusMessage('ファイル選択に失敗しました。');
       return;
     }
-    if (xmlFiles.length > 1) {
-      setError('XMLファイルが複数選択されています。XMLファイルは一つだけにしてください。');
-      setStatusMessage('ファイル選択に失敗しました。');
-      return;
-    }
-    const xmlFile = xmlFiles[0];
 
-    // 2. 画像ファイルを探す
-    const imageFileArray = files.filter(file => 
-      !file.name.toLowerCase().endsWith('.xml')
-    );
-    const imageFileMap = imageFileArray.reduce((acc, file) => {
-      acc[file.name] = file;
-      return acc;
-    }, {});
-    
-    setStatusMessage(`処理中: ${xmlFile.name} と ${imageFileArray.length}個の画像を読み込んでいます...`);
+    const imageMap = createImageFileMap(files);
+    setStatusMessage(`処理中: ${xmlFile.name} と ${Object.keys(imageMap).length}個の画像を読み込んでいます...`);
 
-    // 3. XMLファイルを読み込んで解析する
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const xmlString = e.target.result;
-        const parsedData = parsePatentXml(xmlString);
+        const xmlDoc = parseXmlString(xmlString);
+        const extractedData = extractPatentData(xmlDoc);
         
-        // 正常に処理が完了したらstateを更新
-        setPatentData(parsedData);
-        setImageFiles(imageFileMap);
-        setStatusMessage(`読み込み完了: ${xmlFile.name} (${imageFileArray.length}個の画像)`);
-
+        setPatentData(extractedData);
+        setImageFiles(imageMap);
+        setStatusMessage(`読み込み完了: ${xmlFile.name} (${Object.keys(imageMap).length}個の画像)`);
       } catch (err) {
-        console.error("XML Parse Error:", err);
-        setError(`XMLの解析に失敗しました: ${err.message}`);
-        setStatusMessage('ファイル解析中にエラーが発生しました。');
+        console.error("Data Extraction Error:", err);
+        setError(`処理中にエラーが発生しました: ${err.message}`);
+        setStatusMessage('ファイル処理中にエラーが発生しました。');
       }
     };
     reader.onerror = () => {
@@ -92,7 +82,7 @@ function App() {
 
         {error && <p className="error-message">{error}</p>}
         
-        {patentData && <PatentViewer data={patentData} images={imageFiles} />}
+        {patentData && <PatentViewer patentData={patentData} imageFiles={imageFiles} />}
       </main>
     </div>
   );
